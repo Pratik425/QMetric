@@ -170,8 +170,8 @@ const UploadPage = () => {
       const token = sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
       if (!token) throw new Error('No authentication token found. Please login first.');
 
-      // const response = await fetch('http://localhost:80/upload/totext', {
-      const response = await fetch(`https://qmetric-2.onrender.com/upload/totext`, {
+      const response = await fetch('http://localhost:80/upload/totext', {
+      // const response = await fetch(`https://qmetric-2.onrender.com/upload/totext`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formDataToSend
