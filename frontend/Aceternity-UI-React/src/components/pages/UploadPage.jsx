@@ -2,6 +2,21 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Trash2, Upload, FileText, Check, Target, BookOpen, Loader2, AlertCircle, ListChecks, PenLine } from 'lucide-react';
 
+// Moved outside UploadPage so it isn't recreated (and doesn't remount its children) on every render.
+const SectionCard = ({ badge, title, subtitle, icon, children }) => (
+  <div className="bg-gray-800/50 border border-gray-700/60 rounded-2xl p-6">
+    <div className="flex items-center gap-3 mb-4">
+      {badge && <span className="px-3 py-1 bg-blue-500/15 border border-blue-500/30 text-blue-300 text-xs font-bold rounded-lg">{badge}</span>}
+      {icon && icon}
+      <div>
+        <h2 className="text-white font-bold text-lg">{title}</h2>
+        {subtitle && <p className="text-gray-400 text-sm">{subtitle}</p>}
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
 const UploadPage = () => {
   const [formData, setFormData] = useState({
     "College Name": "",
@@ -29,23 +44,9 @@ const UploadPage = () => {
   const labelClass = "block text-gray-300 text-sm font-medium mb-2";
   const inputClass = "w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all";
 
-  // SectionCard component
-  const SectionCard = ({ badge, title, subtitle, icon, children }) => (
-    <div className="bg-gray-800/50 border border-gray-700/60 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-4">
-        {badge && <span className="px-3 py-1 bg-blue-500/15 border border-blue-500/30 text-blue-300 text-xs font-bold rounded-lg">{badge}</span>}
-        {icon && icon}
-        <div>
-          <h2 className="text-white font-bold text-lg">{title}</h2>
-          {subtitle && <p className="text-gray-400 text-sm">{subtitle}</p>}
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-
   // Helper function
   const getCurrentWeightSum = () => courseOutcomes.reduce((sum, co) => sum + (parseFloat(co.weight) || 0), 0);
+  const getQuestionsTotalMarks = () => questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 0), 0);
 
   // Validation function
   const validateForm = () => {
@@ -219,6 +220,7 @@ const UploadPage = () => {
 
     if (!validateForm()) return;
     setIsUploading(true); setError('');
+
     // Transform course outcomes and modules into backend's expected format
     const transformedSequence = [
       // Add course outcomes with backend structure
@@ -321,6 +323,7 @@ const UploadPage = () => {
   const requiredFields = ["College Name", "Branch", "Course Name", "Course Code"];
   const weightSum = getCurrentWeightSum();
   const weightOk = Math.abs(weightSum - 100) <= 0.01;
+  const questionsTotalMarks = getQuestionsTotalMarks();
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -598,6 +601,15 @@ const UploadPage = () => {
                   className={`${inputClass} md:w-56`} />
               </div>
 
+              {questions.length > 0 && (
+                <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-700/50">
+                  <span className="text-gray-400 text-sm">Total Marks:</span>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold border bg-blue-500/15 border-blue-500/40 text-blue-300">
+                    {questionsTotalMarks}
+                  </span>
+                </div>
+              )}
+
               {questions.length === 0 ? (
                 <div className="text-center py-10 border-2 border-dashed border-gray-700/50 rounded-2xl bg-gray-700/10">
                   <ListChecks className="text-gray-600 mx-auto mb-3" size={34} />
@@ -683,7 +695,7 @@ const UploadPage = () => {
             disabled={isUploading || (inputMode === 'excel' ? !file : questions.length === 0)}
             className={`group flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-bold text-base shadow-xl transition-all duration-200
               bg-gradient-to-r from-blue-500 to-purple-600
-              ${(!file || isUploading)
+              ${(isUploading || (inputMode === 'excel' ? !file : questions.length === 0))
                 ? 'opacity-50 cursor-not-allowed shadow-none'
                 : 'hover:scale-105 hover:shadow-blue-500/30 hover:shadow-2xl'
               }`}

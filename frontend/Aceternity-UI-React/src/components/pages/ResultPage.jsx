@@ -133,6 +133,30 @@ const Gauge = ({ value = 0, size = 220 }) => {
   );
 };
 
+const Card = ({ title, children, accent = 'blue' }) => (
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-6 mb-6 overflow-hidden relative">
+    <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${accent === 'blue' ? 'from-blue-400 to-indigo-400' :
+      accent === 'amber' ? 'from-amber-400 to-orange-400' :
+        accent === 'teal' ? 'from-teal-400 to-emerald-400' :
+          'from-purple-400 to-pink-400'
+      }`} />
+    <h2 className="text-base font-bold text-gray-800 mb-4 mt-1">{title}</h2>
+    {children}
+  </div>
+);
+
+const Th = ({ children, center }) => (
+  <th className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 ${center ? 'text-center' : 'text-left'}`}>
+    {children}
+  </th>
+);
+
+const Td = ({ children, center, className = '' }) => (
+  <td className={`px-4 py-3 text-sm text-gray-700 ${center ? 'text-center' : ''} ${className}`}>
+    {children}
+  </td>
+);
+
 const ResultPage = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1695,34 +1719,8 @@ const ResultPage = () => {
           ))}
         </div>
 
-        {/* Shared card + table styles as helper components */}
-        {(() => {
-          const Card = ({ title, children, accent = 'blue' }) => (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-6 mb-6 overflow-hidden relative">
-              <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${accent === 'blue' ? 'from-blue-400 to-indigo-400' :
-                accent === 'amber' ? 'from-amber-400 to-orange-400' :
-                  accent === 'teal' ? 'from-teal-400 to-emerald-400' :
-                    'from-purple-400 to-pink-400'
-                }`} />
-              <h2 className="text-base font-bold text-gray-800 mb-4 mt-1">{title}</h2>
-              {children}
-            </div>
-          );
-
-          const Th = ({ children, center }) => (
-            <th className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 ${center ? 'text-center' : 'text-left'}`}>
-              {children}
-            </th>
-          );
-
-          const Td = ({ children, center, className = '' }) => (
-            <td className={`px-4 py-3 text-sm text-gray-700 ${center ? 'text-center' : ''} ${className}`}>
-              {children}
-            </td>
-          );
-
-          return (
-            <>
+        {/* Card / Th / Td are defined at module level above so they aren't recreated on every render */}
+        <>
               {/* ── Course Information ── */}
               <Card title="Course Information" accent="blue">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2059,8 +2057,6 @@ const ResultPage = () => {
                 </div>
               </Card>
             </>
-          );
-        })()}
 
       </div>
     </div>
