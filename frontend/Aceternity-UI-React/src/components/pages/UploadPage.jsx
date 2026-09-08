@@ -20,6 +20,7 @@ const SectionCard = ({ badge, title, subtitle, icon, children }) => (
 const UploadPage = () => {
   const [formData, setFormData] = useState({
     "College Name": "",
+    "Field": "",
     "Branch": "",
     "Year Of Study": "",
     "Semester": "",
@@ -43,7 +44,7 @@ const UploadPage = () => {
   // CSS classes
   const labelClass = "block text-gray-300 text-sm font-medium mb-2";
   const inputClass = "w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all";
-
+    const fieldOptions = ['Engineering', 'Medical', 'Pharmacy', 'Management', 'Science', 'Other'];
   // Helper function
   const getCurrentWeightSum = () => courseOutcomes.reduce((sum, co) => sum + (parseFloat(co.weight) || 0), 0);
   const getQuestionsTotalMarks = () => questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 0), 0);
@@ -53,7 +54,9 @@ const UploadPage = () => {
     setError('');
 
     // Check required fields
-    const requiredFields = ["College Name", "Branch", "Course Name", "Course Code"];
+   
+    const requiredFields = ["College Name", "Field", "Branch", "Course Name", "Course Code"];
+
     for (let field of requiredFields) {
       if (!formData[field].trim()) { setError(`${field} is required`); return false; }
     }
@@ -84,7 +87,7 @@ const UploadPage = () => {
   };
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData({ "College Name": "", "Field": "", "Branch": "", "Year Of Study": "", "Semester": "", "Course Name": "", "Course Code": "", "Course Teacher": "" });
     setError('');
   };
 
@@ -240,7 +243,7 @@ const UploadPage = () => {
       if (!token) throw new Error('No authentication token found. Please login first.');
 
       const response = await fetch('http://localhost:80/upload/totext', {
-      // const response = await fetch(`https://qmetric-2.onrender.com/upload/totext`, {
+        // const response = await fetch(`https://qmetric-2.onrender.com/upload/totext`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formDataToSend
@@ -359,24 +362,51 @@ const UploadPage = () => {
 
         {/* ── 1. Course Information ── */}
         <SectionCard badge="1" title="Course Information" subtitle="Basic details about the course and institution">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.keys(formData).map((key) => (
-              <div key={key}>
-                <label className={labelClass}>
-                  {key}
-                  {requiredFields.includes(key) && <span className="text-red-400 ml-1">*</span>}
-                </label>
-                <input
-                  type="text"
-                  name={key}
-                  value={formData[key]}
-                  onChange={handleInputChange}
-                  className={inputClass}
-                  placeholder={`Enter ${key.toLowerCase()}`}
-                />
-              </div>
-            ))}
+          <div className="mb-5">
+            <label className={labelClass}>
+              Field of Study <span className="text-red-400">*</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {fieldOptions.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => { setFormData({ ...formData, Field: f }); setError(''); }}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${formData.Field === f
+                      ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+                      : 'bg-gray-900/60 border-gray-700/60 text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                    }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {formData.Field ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.keys(formData).filter((key) => key !== 'Field').map((key) => (
+                <div key={key}>
+                  <label className={labelClass}>
+                    {key}
+                    {requiredFields.includes(key) && <span className="text-red-400 ml-1">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    name={key}
+                    value={formData[key]}
+                    onChange={handleInputChange}
+                    className={inputClass}
+                    placeholder={`Enter ${key.toLowerCase()}`}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 border-2 border-dashed border-gray-700/50 rounded-2xl bg-gray-700/10">
+              <p className="text-gray-400 font-medium text-sm">Select a field of study above to continue</p>
+            </div>
+          )}
         </SectionCard>
 
         {/* ── 2. Course Outcomes ── */}
@@ -400,8 +430,8 @@ const UploadPage = () => {
             <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-700/50">
               <span className="text-gray-400 text-sm">Total Weight:</span>
               <span className={`px-3 py-1 rounded-full text-xs font-bold border ${weightOk
-                  ? 'bg-green-500/15 border-green-500/40 text-green-400'
-                  : 'bg-red-500/15 border-red-500/40 text-red-400'
+                ? 'bg-green-500/15 border-green-500/40 text-green-400'
+                : 'bg-red-500/15 border-red-500/40 text-red-400'
                 }`}>
                 {weightSum.toFixed(1)}% {weightOk ? '✓ Good to go' : '— must reach 100%'}
               </span>
@@ -520,16 +550,14 @@ const UploadPage = () => {
           <div className="flex gap-2 mb-5 p-1 bg-gray-900/60 border border-gray-700/60 rounded-xl w-fit">
             <button type="button"
               onClick={() => { setInputMode('excel'); setError(''); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                inputMode === 'excel' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
-              }`}>
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${inputMode === 'excel' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
+                }`}>
               <FileText size={14} /> Upload Excel File
             </button>
             <button type="button"
               onClick={() => { setInputMode('manual'); setError(''); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                inputMode === 'manual' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
-              }`}>
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${inputMode === 'manual' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
+                }`}>
               <PenLine size={14} /> Enter Questions Manually
             </button>
           </div>

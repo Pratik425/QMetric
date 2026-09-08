@@ -254,6 +254,31 @@ const bloomsTaxonomyVerbs = {
     "create": ["design", "compose", "synthesis", "plan", "combine", "formulate", "invent", "hypothesize", "substitute", "compile", "construct", "develop", "generalize", "integrate", "modify", "organize", "prepare", "produce", "rearrange", "rewrite", "adapt", "arrange", "assemble", "choose", "collaborate", "facilitate", "imagine", "intervene", "manage", "originate", "propose", "simulate", "solve", "support", "test", "validate", "create"]
 };
 
+// Field-specific verb additions, merged on top of the base list above.
+// Add more keys here later (e.g. "pharmacy", "management") without touching
+// the detection logic itself.
+const fieldVerbExtensions = {
+    "medical": {
+        "understand": ["auscultate", "palpate"],
+        "apply": ["diagnose", "prescribe", "administer", "treat"],
+        "analyze": ["differentiate diagnosis", "correlate symptoms"],
+        "evaluate": ["manage", "triage", "prognosticate"]
+    }
+};
+
+// Merge base verbs with a field's extension (if any) into one lookup object.
+function getVerbMapForField(field) {
+    const key = (field || "").toLowerCase();
+    const extension = fieldVerbExtensions[key];
+    if (!extension) return bloomsTaxonomyVerbs;
+
+    const merged = {};
+    for (const level in bloomsTaxonomyVerbs) {
+        merged[level] = [...bloomsTaxonomyVerbs[level], ...(extension[level] || [])];
+    }
+    return merged;
+}
+
 // Helper: Extract verbs from text using Python spaCy
 function extractVerbsPython(text) {
     const result = spawnSync('python', ['extraction_logic.py', text], { encoding: 'utf-8' });
@@ -265,7 +290,7 @@ function extractVerbsPython(text) {
 }
 
 // Function to structurize and process the Excel data
-exports.Structurize = (data, inputFile, bloomLevelMap) => {
+exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
     return new Promise((resolve, reject) => {
         try {
             const workbook = xlsx.readFile(inputFile);
@@ -274,6 +299,7 @@ exports.Structurize = (data, inputFile, bloomLevelMap) => {
 
             // Convert the sheet into a JSON array
             const tableData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+            const verbMap = getVerbMapForField(field);
 
             const StructurizedData = tableData.map(row => {
                 const questionText = row.question || row.Question || row.QUESTION || '';
@@ -283,7 +309,7 @@ exports.Structurize = (data, inputFile, bloomLevelMap) => {
                     return null;
                 }
 
-                const bloom = exports.FindBloomLevelsInText(questionText, bloomLevelMap);
+                const bloom = exports.FindBloomLevelsInText(questionText, bloomLevelMap, verbMap);
 
                 const moduleNumber = row.Module !== undefined && row.Module !== null
                     ? String(row.Module).trim()
@@ -311,9 +337,9 @@ exports.Structurize = (data, inputFile, bloomLevelMap) => {
 };
 
 // Helper to find level name from verb
-function findBloomLevel(word, bloomLevelMap) {
-    for (const level in bloomsTaxonomyVerbs) {
-        if (bloomsTaxonomyVerbs[level].includes(word)) {
+function findBloomLevel(word, verbMap) {
+    for (const level in verbMap) {
+        if (verbMap[level].includes(word)) {
             return level;
         }
     }
@@ -321,7 +347,8 @@ function findBloomLevel(word, bloomLevelMap) {
 }
 
 // Public method to analyze Bloom level in a sentence
-exports.FindBloomLevelsInText = (text, bloomLevelMap) => {
+// verbMap defaults to the base engineering-agnostic list if no field-specific one is given.
+exports.FindBloomLevelsInText = (text, bloomLevelMap, verbMap = bloomsTaxonomyVerbs) => {
     const words = text.split(/\W+/);
     const wordResult = [];
     const levelResult = [];
@@ -330,7 +357,7 @@ exports.FindBloomLevelsInText = (text, bloomLevelMap) => {
 
     for (const word of words) {
         const lowerWord = word.toLowerCase();
-        const level = findBloomLevel(lowerWord, bloomLevelMap);
+        const level = findBloomLevel(lowerWord, verbMap);
 
         if (level !== "Not Found") {
             const levelIndex = getBloomLevelIndex(level, bloomLevelMap);

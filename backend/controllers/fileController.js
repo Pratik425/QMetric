@@ -149,7 +149,7 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
     console.log("Dynamic Bloom Level Map:", bloomLevelMap);
 
     // Step 6: Process Question Data
-    const questionData = await Structurize([], filePath, bloomLevelMap);
+    const questionData = await Structurize([], filePath, bloomLevelMap, formData.Field);
     const evaluationResult = Evaluate(
       questionData,
       coDetails,
@@ -158,8 +158,9 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
     );
 
     // Step 7: Save Data to MongoDB
-    const paper = new PaperInfo({
+      const paper = new PaperInfo({
       "College Name": formData["College Name"],
+      Field: formData.Field,
       Branch: formData.Branch,
       "Year Of Study": formData["Year Of Study"],
       Semester: formData.Semester,
