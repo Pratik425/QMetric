@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Trash2, Upload, FileText, Check, Target, BookOpen, Loader2, AlertCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Trash2, Upload, FileText, Check, Target, BookOpen, Loader2, AlertCircle, ListChecks, PenLine } from 'lucide-react';
 
 const UploadPage = () => {
   const [formData, setFormData] = useState({
@@ -17,6 +18,9 @@ const UploadPage = () => {
   const [numCOs, setNumCOs] = useState('');
   const [numModules, setNumModules] = useState('');
   const [file, setFile] = useState(null);
+  const [inputMode, setInputMode] = useState('excel'); // 'excel' | 'manual'
+  const [numQuestions, setNumQuestions] = useState('');
+  const [questions, setQuestions] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
@@ -85,6 +89,7 @@ const UploadPage = () => {
 
   const createCO = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, weight: "", blooms: "" });
   const createModule = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, name: "", hours: "" });
+  const createQuestion = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, question: "", co: "", marks: "", difficulty: "", module: "" });
 
   const handleNumCOsChange = (e) => {
     const num = parseInt(e.target.value) || 0;
@@ -128,6 +133,61 @@ const UploadPage = () => {
     setError('');
   };
 
+  const handleNumQuestionsChange = (e) => {
+    const num = parseInt(e.target.value) || 0;
+    setNumQuestions(e.target.value);
+    if (num > 0 && num <= 100) {
+      setQuestions(Array.from({ length: num }, () => createQuestion()));
+      setError('');
+    } else if (num > 100) setError('Maximum 100 questions allowed');
+    else setQuestions([]);
+  };
+
+  const deleteQuestion = (index) => {
+    setQuestions(questions.filter((_, i) => i !== index));
+  };
+
+  const handleQuestionChange = (index, field, value) => {
+    const updated = [...questions];
+    updated[index][field] = value;
+    setQuestions(updated);
+    setError('');
+  };
+
+  const validateQuestions = () => {
+    setError('');
+    if (questions.length === 0) { setError('Enter the number of questions and fill them in.'); return false; }
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.question.trim()) { setError(`Question ${i + 1}: question text is required`); return false; }
+      if (!q.co) { setError(`Question ${i + 1}: please select a CO`); return false; }
+      if (!q.marks || parseFloat(q.marks) <= 0) { setError(`Question ${i + 1}: please enter valid marks`); return false; }
+      if (!q.difficulty) { setError(`Question ${i + 1}: please select a difficulty`); return false; }
+      if (!q.module) { setError(`Question ${i + 1}: please select a module`); return false; }
+    }
+    return true;
+  };
+
+  const generateExcelFromQuestions = () => {
+    const rows = questions.map(q => ({
+      Question: q.question.trim(),
+      CO: q.co,
+      Marks: parseFloat(q.marks),
+      Difficulty: q.difficulty,
+      Module: q.module
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Questions');
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const generatedFile = new File([blob], `manual_paper_${Date.now()}.xlsx`, { type: blob.type });
+    setFile(generatedFile);
+    return generatedFile;
+  };
+
   const isValidFileType = (f) =>
     ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'].includes(f.type);
 
@@ -148,10 +208,17 @@ const UploadPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!file) { setError("Please upload a file (Excel)!"); return; }
+    let fileToSubmit = file;
+
+    if (inputMode === 'manual') {
+      if (!validateQuestions()) return;
+      fileToSubmit = generateExcelFromQuestions();
+    } else if (!file) {
+      setError("Please upload a file (Excel)!"); return;
+    }
+
     if (!validateForm()) return;
     setIsUploading(true); setError('');
-
     // Transform course outcomes and modules into backend's expected format
     const transformedSequence = [
       // Add course outcomes with backend structure
@@ -162,7 +229,7 @@ const UploadPage = () => {
 
     // Prepare form data to send to the backend
     const formDataToSend = new FormData();
-    formDataToSend.append("file", file);
+    formDataToSend.append("file", fileToSubmit);
     formDataToSend.append("FormData", JSON.stringify(formData));
     formDataToSend.append("Sequence", JSON.stringify(transformedSequence));
 
@@ -440,67 +507,172 @@ const UploadPage = () => {
           )}
         </SectionCard>
 
-        {/* ── 4. File Upload ── */}
+        {/* ── 4. Question Paper ── */}
         <SectionCard
           icon={<Upload size={16} />}
-          title="Upload Paper File"
-          subtitle="Upload your question paper in Excel format (.xlsx or .xls)"
+          title="Question Paper"
+          subtitle="Upload your question paper as an Excel file, or enter the questions manually."
         >
-          <div className="flex justify-end mb-4">
-            <button type="button" onClick={downloadSample}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg hover:bg-gray-600 hover:text-white transition-colors">
-              <FileText size={13} />
-              Download Sample Format
+          {/* Mode toggle */}
+          <div className="flex gap-2 mb-5 p-1 bg-gray-900/60 border border-gray-700/60 rounded-xl w-fit">
+            <button type="button"
+              onClick={() => { setInputMode('excel'); setError(''); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                inputMode === 'excel' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
+              }`}>
+              <FileText size={14} /> Upload Excel File
+            </button>
+            <button type="button"
+              onClick={() => { setInputMode('manual'); setError(''); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                inputMode === 'manual' ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300' : 'text-gray-400 hover:text-gray-200'
+              }`}>
+              <PenLine size={14} /> Enter Questions Manually
             </button>
           </div>
 
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200
-              ${dragOver
-                ? 'border-blue-400/70 bg-blue-500/5'
-                : file
-                  ? 'border-green-400/60 bg-green-500/5'
-                  : 'border-gray-600/60 hover:border-gray-500 hover:bg-gray-700/20 cursor-pointer'
-              }`}
-          >
-            {file ? (
-              <div className="space-y-3">
-                <div className="w-14 h-14 bg-green-500/15 border border-green-500/30 rounded-2xl flex items-center justify-center mx-auto">
-                  <FileText className="text-green-400" size={26} />
-                </div>
-                <div>
-                  <p className="text-white font-semibold">{file.name}</p>
-                  <p className="text-gray-400 text-sm mt-0.5">
-                    Ready to analyse · {(file.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                </div>
-                <button type="button" onClick={() => setFile(null)}
-                  className="text-red-400 hover:text-red-300 text-sm underline transition-colors">
-                  Remove file
+          {inputMode === 'excel' ? (
+            <>
+              <div className="flex justify-end mb-4">
+                <button type="button" onClick={downloadSample}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg hover:bg-gray-600 hover:text-white transition-colors">
+                  <FileText size={13} />
+                  Download Sample Format
                 </button>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="w-14 h-14 bg-gray-700 border border-gray-600 rounded-2xl flex items-center justify-center mx-auto">
-                  <Upload className="text-gray-400" size={26} />
-                </div>
-                <div>
-                  <p className="text-white font-semibold">Drop your file here</p>
-                  <p className="text-gray-400 text-sm mt-1">or click the button below to browse</p>
-                  <p className="text-gray-500 text-xs mt-2">Supported: .xlsx, .xls · Max 10 MB</p>
-                </div>
-                <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" id="file-upload" />
-                <label htmlFor="file-upload"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-xl hover:bg-gray-600 hover:border-gray-500 cursor-pointer transition-colors">
-                  <FileText size={14} />
-                  Choose File
-                </label>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200
+                  ${dragOver
+                    ? 'border-blue-400/70 bg-blue-500/5'
+                    : file
+                      ? 'border-green-400/60 bg-green-500/5'
+                      : 'border-gray-600/60 hover:border-gray-500 hover:bg-gray-700/20 cursor-pointer'
+                  }`}
+              >
+                {file ? (
+                  <div className="space-y-3">
+                    <div className="w-14 h-14 bg-green-500/15 border border-green-500/30 rounded-2xl flex items-center justify-center mx-auto">
+                      <FileText className="text-green-400" size={26} />
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold">{file.name}</p>
+                      <p className="text-gray-400 text-sm mt-0.5">
+                        Ready to analyse · {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setFile(null)}
+                      className="text-red-400 hover:text-red-300 text-sm underline transition-colors">
+                      Remove file
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="w-14 h-14 bg-gray-700 border border-gray-600 rounded-2xl flex items-center justify-center mx-auto">
+                      <Upload className="text-gray-400" size={26} />
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold">Drop your file here</p>
+                      <p className="text-gray-400 text-sm mt-1">or click the button below to browse</p>
+                      <p className="text-gray-500 text-xs mt-2">Supported: .xlsx, .xls · Max 10 MB</p>
+                    </div>
+                    <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" id="file-upload" />
+                    <label htmlFor="file-upload"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-xl hover:bg-gray-600 hover:border-gray-500 cursor-pointer transition-colors">
+                      <FileText size={14} />
+                      Choose File
+                    </label>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-5">
+                <label className={labelClass}>Number of Questions <span className="text-red-400">*</span></label>
+                <input type="number" value={numQuestions} onChange={handleNumQuestionsChange}
+                  min="1" max="100" placeholder="Enter number (1–100)"
+                  className={`${inputClass} md:w-56`} />
+              </div>
+
+              {questions.length === 0 ? (
+                <div className="text-center py-10 border-2 border-dashed border-gray-700/50 rounded-2xl bg-gray-700/10">
+                  <ListChecks className="text-gray-600 mx-auto mb-3" size={34} />
+                  <p className="text-gray-400 font-medium text-sm">No questions yet</p>
+                  <p className="text-gray-500 text-xs mt-1">Enter the number above to get started</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {questions.map((q, index) => (
+                    <div key={q.id}
+                      className="bg-gray-700/30 border border-gray-600/40 rounded-xl p-4 group hover:border-gray-500/60 hover:bg-gray-700/40 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-lg">
+                            Q{index + 1}
+                          </span>
+                          <span className="text-gray-200 text-sm font-medium">Question {index + 1}</span>
+                        </div>
+                        <button type="button" onClick={() => deleteQuestion(index)}
+                          className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+
+                      <div className="mb-3">
+                        <label className={labelClass}>Question Text <span className="text-red-400">*</span></label>
+                        <textarea rows={2} placeholder="Type the question here..."
+                          value={q.question} onChange={(e) => handleQuestionChange(index, 'question', e.target.value)}
+                          className={`${inputClass} resize-none`} />
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className={labelClass}>CO <span className="text-red-400">*</span></label>
+                          <select value={q.co} onChange={(e) => handleQuestionChange(index, 'co', e.target.value)}
+                            className={`${inputClass} cursor-pointer`}>
+                            <option value="">Select CO</option>
+                            {courseOutcomes.map((_, i) => (
+                              <option key={i} value={`CO${i + 1}`}>{`CO${i + 1}`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Marks <span className="text-red-400">*</span></label>
+                          <input type="number" placeholder="Marks" value={q.marks}
+                            onChange={(e) => handleQuestionChange(index, 'marks', e.target.value)}
+                            className={inputClass} min="0" step="0.5" />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Difficulty <span className="text-red-400">*</span></label>
+                          <select value={q.difficulty} onChange={(e) => handleQuestionChange(index, 'difficulty', e.target.value)}
+                            className={`${inputClass} cursor-pointer`}>
+                            <option value="">Select</option>
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Module <span className="text-red-400">*</span></label>
+                          <select value={q.module} onChange={(e) => handleQuestionChange(index, 'module', e.target.value)}
+                            className={`${inputClass} cursor-pointer`}>
+                            <option value="">Select Module</option>
+                            {modules.map((m, i) => (
+                              <option key={i} value={m.name || `Module ${i + 1}`}>{m.name || `Module ${i + 1}`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </SectionCard>
 
         {/* ── Submit ── */}
@@ -508,7 +680,7 @@ const UploadPage = () => {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!file || isUploading}
+            disabled={isUploading || (inputMode === 'excel' ? !file : questions.length === 0)}
             className={`group flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-bold text-base shadow-xl transition-all duration-200
               bg-gradient-to-r from-blue-500 to-purple-600
               ${(!file || isUploading)

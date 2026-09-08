@@ -31,7 +31,8 @@
     "tailwind-merge": "^2.4.0",
     "three": "^0.183.2",
     "three-globe": "^2.45.0",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "react-scripts start",
