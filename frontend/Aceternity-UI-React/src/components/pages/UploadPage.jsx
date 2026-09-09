@@ -44,7 +44,7 @@ const UploadPage = () => {
   // CSS classes
   const labelClass = "block text-gray-300 text-sm font-medium mb-2";
   const inputClass = "w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all";
-    const fieldOptions = ['Engineering', 'Medical', 'Pharmacy', 'Management', 'Science', 'Other'];
+  const fieldOptions = ['Engineering', 'Medical', 'Pharmacy', 'Management', 'Science', 'Other'];
   // Helper function
   const getCurrentWeightSum = () => courseOutcomes.reduce((sum, co) => sum + (parseFloat(co.weight) || 0), 0);
   const getQuestionsTotalMarks = () => questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 0), 0);
@@ -54,7 +54,7 @@ const UploadPage = () => {
     setError('');
 
     // Check required fields
-   
+
     const requiredFields = ["College Name", "Field", "Branch", "Course Name", "Course Code"];
 
     for (let field of requiredFields) {
@@ -87,7 +87,7 @@ const UploadPage = () => {
   };
 
   const handleInputChange = (e) => {
-    setFormData({ "College Name": "", "Field": "", "Branch": "", "Year Of Study": "", "Semester": "", "Course Name": "", "Course Code": "", "Course Teacher": "" });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
@@ -279,7 +279,7 @@ const UploadPage = () => {
             window.location.href = '/result';
             // Reset form on success
             setFile(null); setCourseOutcomes([]); setModules([]);
-            setFormData({ "College Name": "", "Branch": "", "Year Of Study": "", "Semester": "", "Course Name": "", "Course Code": "", "Course Teacher": "" });
+            setFormData({ "College Name": "", "Field": "", "Branch": "", "Year Of Study": "", "Semester": "", "Course Name": "", "Course Code": "", "Course Teacher": "" });
           } else throw new Error('No result ID received from server');
         } catch { setError('Invalid response from server. Please try again.'); }
       } else {
@@ -373,8 +373,8 @@ const UploadPage = () => {
                   type="button"
                   onClick={() => { setFormData({ ...formData, Field: f }); setError(''); }}
                   className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${formData.Field === f
-                      ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
-                      : 'bg-gray-900/60 border-gray-700/60 text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                    ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+                    : 'bg-gray-900/60 border-gray-700/60 text-gray-400 hover:text-gray-200 hover:border-gray-600'
                     }`}
                 >
                   {f}
