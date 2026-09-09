@@ -4,6 +4,7 @@ const fs = require("fs");
 const { Structurize } = require("../core/Regex/Regex");
 const PaperInfo = require("../Model/PaperInfo");
 const { Evaluate } = require("../core/evaluate/evaluate");
+const { backupPaperToDrive } = require('../core/drive/backup');
 
 exports.convertToText = async (req, res) => {
   if (!req.file) {
@@ -178,6 +179,11 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
 
     // Step 8: Save the paper document to MongoDB
     await paper.save();
+    try {
+      await backupPaperToDrive(formData, filePath, path.extname(filePath));
+    } catch (driveErr) {
+      console.error('Drive backup failed (paper still saved to DB):', driveErr.message);
+    }
     return evaluationResult;
   } catch (error) {
     console.error("❌ ERROR INSIDE saveToDB");
