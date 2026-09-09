@@ -12,6 +12,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const User = require('./Model/user');
+const { backupUserToDrive } = require('./core/drive/backup');   
 
 const testUsers = [
   { userName: 'Test User1', email: 'test@user1.com', password: 'password123' },
@@ -47,6 +48,7 @@ async function seedUsers() {
 
         await newUser.save();
         console.log(`✅ User ${userData.email} created successfully`);
+        await backupUserToDrive(newUser);
       } else {
         console.log(`⚠️ User ${userData.email} already exists - skipping`);
       }
