@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { cn } from "../../utils/cn.js";
+import API_BASE_URL from "../../config/api";
 
 export function SignupFormDemo() {
   const [email, setEmail] = useState("");
@@ -33,7 +34,7 @@ export function SignupFormDemo() {
     }
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

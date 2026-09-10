@@ -28,11 +28,37 @@ db.on('error', (error) => {
 db.once('open', () => {
   console.log('Connected to MongoDB');
 
-app.use(cors({
-  origin: ['https://q-metric-ten.vercel.app/', 'http://localhost:3000', 'http://localhost:3001'], 
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
-}));  
+  // CORS configuration from environment variables
+  const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'https://q-metric-ten.vercel.app',
+  ];
+
+  const envOrigins = (process.env.CLIENT_URL || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      const normalizedOrigin = origin.replace(/\/+$/, '');
+      if (allowedOrigins.includes(normalizedOrigin) || allowedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+      console.warn(`CORS blocked request from origin: ${origin}. Allowed origins:`, allowedOrigins);
+      return callback(null, false);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+  }));  
 app.use(logger('dev'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));

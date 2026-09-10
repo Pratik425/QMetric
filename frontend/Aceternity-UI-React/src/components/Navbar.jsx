@@ -3,6 +3,7 @@ import { FileText, Menu, X, User, Mail, Lock, Eye, EyeOff, Home, BarChart3, User
 import { useNavigate } from 'react-router-dom';
 import AccessRestrictionModal from './AccessRestrictionModal';
 import useAccessRestriction from './hooks/useAccessRestriction';
+import API_BASE_URL from '../config/api';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -99,12 +100,8 @@ const Navbar = () => {
 
     try {
       const apiUrl = isRegisterMode
-        ? 'https://qmetric-8ihr.onrender.com/auth/create-account'
-        : 'https://qmetric-8ihr.onrender.com/auth/login';
-
-      //  const apiUrl = isRegisterMode
-      //   ?  'http://localhost:80/auth/create-account'
-      //   :  'http://localhost:80/auth/login';
+        ? `${API_BASE_URL}/auth/create-account`
+        : `${API_BASE_URL}/auth/login`;
 
 
       const requestBody = isRegisterMode

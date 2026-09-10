@@ -4,6 +4,7 @@ import BloomsAnalysisChart from './report/BloomAnalysisChart';
 import ModuleAnalysisChart from './report/ModuleAnalysisChart';
 import QuestionDistributionChart from './report/QuestionDistributionChart';
 import COCoverageChart from './report/COCoverageChart';
+import API_BASE_URL from '../../config/api';
 
 // Small SVG gauge component for final score
 function polarToCartesian(cx, cy, r, angleDeg) {
@@ -180,8 +181,7 @@ const ResultPage = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('http://localhost:80/upload/totext', {
-      // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,

@@ -3,6 +3,7 @@ import {
   User, BookOpen, BarChart3, Upload, LogOut,
   FileText, Brain, ArrowRight, RefreshCw, Home
 } from 'lucide-react';
+import API_BASE_URL from '../../config/api';
 
 export default function UserDashboard() {
   const [user, setUser] = useState(null);
@@ -39,7 +40,7 @@ export default function UserDashboard() {
     setLoading(true);
     try {
       const token = sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/upload/totext`, {
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       });

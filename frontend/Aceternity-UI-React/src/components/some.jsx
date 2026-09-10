@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Menu, X, User, Mail, Lock, Eye, EyeOff, Home, BarChart3, Upload } from 'lucide-react';
 import AccessRestrictionModal from './AccessRestrictionModal';
 import useAccessRestriction from './hooks/useAccessRestriction';
+import API_BASE_URL from '../config/api';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -158,8 +159,7 @@ const Navbar = () => {
     }
 
     try {
-      // Fixed the typo in the API URL
-      const apiUrl = isRegisterMode ? 'https://qmetric-2.onrender.com/auth/create-account' : 'https://qmetric-2.onrender.com/auth/login';
+      const apiUrl = isRegisterMode ? `${API_BASE_URL}/auth/create-account` : `${API_BASE_URL}/auth/login`;
     
       const requestBody = isRegisterMode 
         ? {

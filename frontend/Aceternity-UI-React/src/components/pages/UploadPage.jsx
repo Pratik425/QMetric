@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Trash2, Upload, FileText, Check, Target, BookOpen, Loader2, AlertCircle, ListChecks, PenLine } from 'lucide-react';
+import API_BASE_URL from '../../config/api';
 
 // Moved outside UploadPage so it isn't recreated (and doesn't remount its children) on every render.
 const SectionCard = ({ badge, title, subtitle, icon, children }) => (
@@ -242,8 +243,7 @@ const UploadPage = () => {
       const token = sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
       if (!token) throw new Error('No authentication token found. Please login first.');
 
-      // const response = await fetch('http://localhost:80/upload/totext', {
-        const response = await fetch(`https://qmetric-8ihr.onrender.com/upload/totext`, {
+        const response = await fetch(`${API_BASE_URL}/upload/totext`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formDataToSend
