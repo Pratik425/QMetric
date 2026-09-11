@@ -46,9 +46,10 @@ export default function UserDashboard() {
       });
       if (response.ok) {
         const result = await response.json();
-        if (result.success) {
-          setRecentPapers(result.data.slice(0, 5));
-          setStats({ totalPapers: result.data.length });
+        if (result.success && result.data) {
+          const list = Array.isArray(result.data) ? result.data : [result.data];
+          setRecentPapers(list.slice(0, 5));
+          setStats({ totalPapers: list.length });
         }
       } else {
         // Fallback to mock data if API fails

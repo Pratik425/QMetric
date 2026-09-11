@@ -238,11 +238,16 @@
 //     return bloomLevelMap[level] || Infinity; 
 // }
 
-//Version-4
-//Version-3
+//Version-5
 const fs = require('fs');
 const xlsx = require('xlsx');
 const { spawnSync } = require('child_process');
+const { krathwohlTaxonomyVerbs } = require('./affectiveVerbs');
+const {
+    simpsonTaxonomyVerbs,
+    PROFICIENCY_QUALIFIERS,
+    GUIDANCE_QUALIFIERS
+} = require('./psychomotorVerbs');
 
 // Bloom's taxonomy verbs by category
 const bloomsTaxonomyVerbs = {
@@ -254,9 +259,9 @@ const bloomsTaxonomyVerbs = {
     "create": ["design", "compose", "synthesis", "plan", "combine", "formulate", "invent", "hypothesize", "substitute", "compile", "construct", "develop", "generalize", "integrate", "modify", "organize", "prepare", "produce", "rearrange", "rewrite", "adapt", "arrange", "assemble", "choose", "collaborate", "facilitate", "imagine", "intervene", "manage", "originate", "propose", "simulate", "solve", "support", "test", "validate", "create"]
 };
 
+exports.bloomsTaxonomyVerbs = bloomsTaxonomyVerbs;
+
 // Field-specific verb additions, merged on top of the base list above.
-// Add more keys here later (e.g. "pharmacy", "management") without touching
-// the detection logic itself.
 const fieldVerbExtensions = {
     "medical": {
         "understand": ["auscultate", "palpate"],
@@ -279,18 +284,134 @@ function getVerbMapForField(field) {
     return merged;
 }
 
-// Helper: Extract verbs from text using Python spaCy
+// Helper: Extract verbs from text using Python spaCy (optional enhancement)
 function extractVerbsPython(text) {
-    const result = spawnSync('python', ['extraction_logic.py', text], { encoding: 'utf-8' });
-    if (result.error) {
-        console.error('Python error:', result.error);
+    try {
+        const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+        const scriptPath = path.join(__dirname, 'extraction_logic.py');
+        const result = spawnSync(pythonCmd, [scriptPath], { input: text, encoding: 'utf-8', timeout: 1000 });
+        if (result.error || result.status !== 0) {
+            return [];
+        }
+        return (result.stdout || '').trim().split(',').filter(Boolean);
+    } catch {
         return [];
     }
-    return result.stdout.trim().split(',').filter(Boolean);
 }
 
+// Generalized: works for any domain given its verb dictionary + level map
+function findLevelForWord(word, verbDictionary) {
+    for (const level in verbDictionary) {
+        if (verbDictionary[level].includes(word)) {
+            return level;
+        }
+    }
+    return "Not Found";
+}
+
+function getLevelIndex(level, levelMap, fallback) {
+    const mapped = levelMap[level];
+    if (mapped === undefined) {
+        console.warn(`Warning: level "${level}" not found in levelMap, defaulting to ${fallback}`);
+        return fallback;
+    }
+    return mapped;
+}
+
+// Psychomotor ambiguity heuristic (Section 2.3)
+function resolvePsychomotorAmbiguity(text, matchedLevelName, levelMap) {
+    const lowerText = text.toLowerCase();
+
+    // 1. Scan for proficiency-qualifier phrase -> complex_overt_response
+    for (const phrase of PROFICIENCY_QUALIFIERS) {
+        if (lowerText.includes(phrase.toLowerCase())) {
+            const level = "complex_overt_response";
+            const levelIndex = levelMap[level] !== undefined ? levelMap[level] : 3;
+            return { level, levelIndex, ruleFired: "proficiency" };
+        }
+    }
+
+    // 2. Scan for guidance/imitation-qualifier phrase -> guided_response
+    for (const phrase of GUIDANCE_QUALIFIERS) {
+        if (lowerText.includes(phrase.toLowerCase())) {
+            const level = "guided_response";
+            const levelIndex = levelMap[level] !== undefined ? levelMap[level] : 5;
+            return { level, levelIndex, ruleFired: "guidance" };
+        }
+    }
+
+    // 3. Default to mechanism (middle safe default)
+    const level = "mechanism";
+    const levelIndex = levelMap[level] !== undefined ? levelMap[level] : 4;
+    return { level, levelIndex, ruleFired: "default" };
+}
+
+// Generalized level finder across domains
+exports.FindLevelInText = (text, domainKey, verbDictionary, levelMap = {}) => {
+    const words = text.split(/\W+/);
+    const wordResult = [];
+    const levelResult = [];
+    const maxLevelValue = Object.keys(levelMap).length + 1;
+    let highestLevel = maxLevelValue;
+    let highestVerb = null;
+    let matchedLevelName = null;
+
+    for (const word of words) {
+        const lowerWord = word.toLowerCase();
+        const level = findLevelForWord(lowerWord, verbDictionary);
+        if (level !== "Not Found") {
+            const levelIndex = getLevelIndex(level, levelMap, maxLevelValue);
+            wordResult.push(word);
+            levelResult.push(levelIndex);
+            if (levelIndex < highestLevel) {
+                highestLevel = levelIndex;
+                highestVerb = word;
+                matchedLevelName = level;
+            }
+        }
+    }
+
+    const matched = wordResult.length > 0;
+
+    // Psychomotor ambiguity resolution
+    if (domainKey === "psychomotor" && matched &&
+        ["guided_response", "mechanism", "complex_overt_response"].includes(matchedLevelName)) {
+        const resolved = resolvePsychomotorAmbiguity(text, matchedLevelName, levelMap);
+        return {
+            words: wordResult.join(", ") || "None",
+            levels: levelResult.join(", ") || "None",
+            highestLevel: resolved.levelIndex,
+            highestVerb: highestVerb || "N/A",
+            matchedLevelName: resolved.level,
+            matched,
+            ambiguityResolution: resolved.ruleFired
+        };
+    }
+
+    return {
+        words: wordResult.join(", ") || "None",
+        levels: levelResult.join(", ") || "None",
+        highestLevel: matched ? highestLevel : null,
+        highestVerb: matched ? highestVerb : null,
+        matchedLevelName: matched ? matchedLevelName : null,
+        matched,
+        ambiguityResolution: null
+    };
+};
+
+// Backward-compatible wrapper for existing callers
+exports.FindBloomLevelsInText = (text, bloomLevelMap, verbMap = bloomsTaxonomyVerbs) => {
+    const result = exports.FindLevelInText(text, "cognitive", verbMap, bloomLevelMap);
+    return {
+        words: result.words,
+        levels: result.levels,
+        highestLevel: result.matched ? result.highestLevel : 6,
+        highestVerb: result.highestVerb || "N/A"
+    };
+};
+
 // Function to structurize and process the Excel data
-exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
+exports.Structurize = (data, inputFile, levelMaps = {}, field) => {
     return new Promise((resolve, reject) => {
         try {
             const workbook = xlsx.readFile(inputFile);
@@ -301,6 +422,11 @@ exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
             const tableData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
             const verbMap = getVerbMapForField(field);
 
+            // Extract level maps for each domain
+            const cognitiveMap = levelMaps.cognitive || levelMaps;
+            const affectiveMap = levelMaps.affective || {};
+            const psychomotorMap = levelMaps.psychomotor || {};
+
             const StructurizedData = tableData.map(row => {
                 const questionText = row.question || row.Question || row.QUESTION || '';
                 
@@ -309,7 +435,12 @@ exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
                     return null;
                 }
 
-                const bloom = exports.FindBloomLevelsInText(questionText, bloomLevelMap, verbMap);
+                const cognitive = exports.FindLevelInText(
+                    questionText, "cognitive", verbMap, cognitiveMap);
+                const affective = exports.FindLevelInText(
+                    questionText, "affective", krathwohlTaxonomyVerbs, affectiveMap);
+                const psychomotor = exports.FindLevelInText(
+                    questionText, "psychomotor", simpsonTaxonomyVerbs, psychomotorMap);
 
                 const moduleNumber = row.Module !== undefined && row.Module !== null
                     ? String(row.Module).trim()
@@ -318,16 +449,18 @@ exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
                 // Extract verbs using Python spaCy
                 const extractedVerbs = extractVerbsPython(questionText);
 
-                // Return structured data for each row
-                return questionText ? {
+                return {
                     ...row,
-                    "Bloom's Verbs": bloom.words,
-                    "Bloom's Taxonomy Level": bloom.highestLevel,
-                    "Bloom's Highest Verb": bloom.highestVerb,
-                    "Module": moduleNumber,
-                    "Extracted Verbs": extractedVerbs.join(', ')
-                } : null;
-            }).filter(row => row !== null); 
+                    Module: moduleNumber,
+                    // Legacy flat fields for backward compatibility
+                    "Bloom's Verbs": cognitive.words,
+                    "Bloom's Taxonomy Level": cognitive.matched ? cognitive.highestLevel : 6,
+                    "Bloom's Highest Verb": cognitive.highestVerb || "N/A",
+                    "Extracted Verbs": extractedVerbs.join(', '),
+                    // Nested DomainLevels source of truth
+                    DomainLevels: { cognitive, affective, psychomotor }
+                };
+            }).filter(row => row !== null);
 
             resolve(StructurizedData);
         } catch (error) {
@@ -335,65 +468,3 @@ exports.Structurize = (data, inputFile, bloomLevelMap, field) => {
         }
     });
 };
-
-// Helper to find level name from verb
-function findBloomLevel(word, verbMap) {
-    for (const level in verbMap) {
-        if (verbMap[level].includes(word)) {
-            return level;
-        }
-    }
-    return "Not Found";
-}
-
-// Public method to analyze Bloom level in a sentence
-// verbMap defaults to the base engineering-agnostic list if no field-specific one is given.
-exports.FindBloomLevelsInText = (text, bloomLevelMap, verbMap = bloomsTaxonomyVerbs) => {
-    const words = text.split(/\W+/);
-    const wordResult = [];
-    const levelResult = [];
-    let highestLevel = 7;
-    let highestVerb = null;
-
-    for (const word of words) {
-        const lowerWord = word.toLowerCase();
-        const level = findBloomLevel(lowerWord, verbMap);
-
-        if (level !== "Not Found") {
-            const levelIndex = getBloomLevelIndex(level, bloomLevelMap);
-            wordResult.push(word);
-            levelResult.push(levelIndex);
-            
-            if(levelIndex < highestLevel){
-                highestLevel = levelIndex;
-                highestVerb = word;
-            }
-        }
-    }
-
-    // If no Bloom verbs found, assign default level 6
-    if (highestLevel === Infinity) {
-        console.warn(`Warning: No Bloom verbs found in: "${text.substring(0, 50)}..."`);
-        highestLevel = 6;
-        highestVerb = "N/A";
-    }
-
-    return {
-        words: wordResult.join(", ") || "None",
-        levels: levelResult.join(", ") || "None",
-        highestLevel,
-        highestVerb: highestVerb || "N/A",
-    };
-};
-
-// Helper to convert level to number using bloomLevelMap
-function getBloomLevelIndex(level, bloomLevelMap) {
-    const mappedLevel = bloomLevelMap[level];
-    
-    if (mappedLevel === undefined) {
-        console.warn(`Warning: Bloom level "${level}" not found in bloomLevelMap, defaulting to 6`);
-        return 6;
-    }
-    
-    return mappedLevel;
-}

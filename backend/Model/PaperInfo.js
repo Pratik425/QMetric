@@ -12,6 +12,26 @@ const PaperSchema = new mongoose.Schema({
   "Sequence": [],
   "Collected Data":[],
   "blommLevelMap": { type: Object, required: true },
+
+  // Multi-Domain Evaluation fields:
+  "DomainResults": {
+    type: {
+      cognitive: { type: Object, default: {} },
+      affective: { type: Object, default: {} },
+      psychomotor: { type: Object, default: {} }
+    },
+    default: {}
+  },
+  "LevelMaps": {
+    type: {
+      cognitive: { type: Object, default: {} },
+      affective: { type: Object, default: {} },
+      psychomotor: { type: Object, default: {} }
+    },
+    default: {}
+  },
+  "DomainOverview": { type: Object, default: {} },
+
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 },{timestamps:true}); 
 

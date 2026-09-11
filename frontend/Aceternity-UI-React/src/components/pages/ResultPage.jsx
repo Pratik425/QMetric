@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Download, BookOpen } from 'lucide-react';
+import { AlertCircle, Download, BookOpen, Target } from 'lucide-react';
 import BloomsAnalysisChart from './report/BloomAnalysisChart';
 import ModuleAnalysisChart from './report/ModuleAnalysisChart';
 import QuestionDistributionChart from './report/QuestionDistributionChart';
@@ -43,12 +43,7 @@ const Gauge = ({ value = 0, size = 220 }) => {
     return '#ef4444'; // Red - Poor
   };
 
-  // Create gradient arcs for background (0-100)
-  const backgroundArcs = [
-    { start: 0, end: 40, color1: '#ef4444', color2: '#f59e0b' },    // Red to Yellow (Poor to Moderate)
-    { start: 40, end: 60, color1: '#f59e0b', color2: '#2563eb' },   // Yellow to Blue (Moderate to Good)
-    { start: 60, end: 100, color1: '#2563eb', color2: '#16a34a' }   // Blue to Green (Good to Excellent)
-  ];
+
 
   // Create arc segments
   // const arcSegments = backgroundArcs.map((segment, idx) => {
@@ -164,6 +159,7 @@ const ResultPage = () => {
   const [error, setError] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showVisualization, setShowVisualization] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState('cognitive');
   const chartsRef = useRef(null);
 
   useEffect(() => {
@@ -203,6 +199,16 @@ const ResultPage = () => {
 
       if (result.success && result.data) {
         setData(result.data);
+        const domainResults = result.data.DomainResults;
+        if (domainResults) {
+          if (domainResults.cognitive?.hasData) {
+            setSelectedDomain('cognitive');
+          } else if (domainResults.affective?.hasData) {
+            setSelectedDomain('affective');
+          } else if (domainResults.psychomotor?.hasData) {
+            setSelectedDomain('psychomotor');
+          }
+        }
       } else {
         throw new Error('Invalid response format or unsuccessful request');
       }
@@ -250,7 +256,10 @@ const ResultPage = () => {
         throw new Error('Unable to open print window');
       }
 
-      const collectedData = data['Collected Data']?.[0];
+      const activeDomainResult = (data?.DomainResults && data?.DomainResults[selectedDomain]?.hasData)
+        ? data.DomainResults[selectedDomain]
+        : (data['Collected Data']?.[0] || {});
+      const collectedData = activeDomainResult;
       const finalScore = collectedData?.FinalScore || 0;
       const today = new Date();
       const dateStr = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -636,13 +645,25 @@ const ResultPage = () => {
         throw new Error('Unable to open print window');
       }
 
-      const collectedData = data['Collected Data']?.[0];
+      const domainLabels = {
+        cognitive: { name: 'Cognitive Domain', framework: "Bloom's Taxonomy" },
+        affective: { name: 'Affective Domain', framework: "Krathwohl's Taxonomy" },
+        psychomotor: { name: 'Psychomotor Domain', framework: "Simpson's Taxonomy" }
+      };
+      const currentDomainInfo = domainLabels[selectedDomain] || domainLabels.cognitive;
+
+      const activeDomainResult = (data?.DomainResults && data?.DomainResults[selectedDomain]?.hasData)
+        ? data.DomainResults[selectedDomain]
+        : (data['Collected Data']?.[0] || {});
+      const collectedData = activeDomainResult;
       const questionData = collectedData?.QuestionData || [];
-      const bloomsData = collectedData?.BloomsData || {};
+      const bloomsData = collectedData?.BloomsData || collectedData?.LevelData || {};
       const moduleData = collectedData?.ModuleData || [];
       const coData = collectedData?.COData || {};
       const finalScore = collectedData?.FinalScore || 0;
-      const blommLevelMap = data?.blommLevelMap || {};
+      const blommLevelMap = (data?.LevelMaps && data?.LevelMaps[selectedDomain])
+        ? data.LevelMaps[selectedDomain]
+        : (data?.blommLevelMap || {});
       const sequence = data?.Sequence || [];
       const coRecommendationsRaw = collectedData?.CORecommendations || [];
       const moduleRecommendationsRaw = collectedData?.ModuleRecommendations || [];
@@ -652,19 +673,22 @@ const ResultPage = () => {
       const questionRecommendations = collectedData?.QuestionRecommendations || [];
 
       const totalQuestions = questionRecommendations.length;
-      const matchingQuestions = questionRecommendations.filter(q => q.remark === 'Matches Expected Blooms Level').length;
-      const higherQuestions = questionRecommendations.filter(q => q.remark === 'Higher than Expected Blooms Level').length;
-      const lowerQuestions = questionRecommendations.filter(q => q.remark === 'Lower than Expected Blooms Level').length;
+      const matchingQuestions = questionRecommendations.filter(q => q.remark === 'Matches Expected Blooms Level' || q.qScore === 1).length;
+      const higherQuestions = questionRecommendations.filter(q => q.remark === 'Higher than Expected Blooms Level' || q.qScore === 2).length;
+      const lowerQuestions = questionRecommendations.filter(q => q.remark === 'Lower than Expected Blooms Level' || q.qScore === -1).length;
       const matchPercentage = totalQuestions > 0 ? (matchingQuestions / totalQuestions * 100).toFixed(1) : 0;
 
       // Generate table rows for CO configuration
       const coRows = Object.keys(sequence[0]?.COs || {}).map(co => {
         const coDataItem = sequence[0].COs[co];
+        const targetLevel = (coDataItem.levelsByDomain && coDataItem.levelsByDomain[selectedDomain])
+          || (Array.isArray(coDataItem.blooms) ? coDataItem.blooms.join(', ') : coDataItem.blooms)
+          || 'N/A';
         return `
           <tr>
             <td class="text-center">${co}</td>
             <td class="text-center">${coDataItem.weight || 0}%</td>
-            <td class="text-center">${coDataItem.blooms?.[0] || 'N/A'}</td>
+            <td class="text-center">${targetLevel}</td>
           </tr>
         `;
       }).join('');
@@ -1252,13 +1276,13 @@ const ResultPage = () => {
 
                 <div class="divider"></div>
             
-                <!-- Bloom's Mapping -->
+                <!-- Domain Taxonomy Mapping -->
                 <div class="section">
-                    <div class="section-title">Bloom's Taxonomy Mapping</div>
+                    <div class="section-title">${currentDomainInfo.framework} Mapping</div>
                     <table>
                         <thead>
                             <tr>
-                                <th>Cognitive Level</th>
+                                <th>${currentDomainInfo.name} Level</th>
                                 <th class="text-center">Value</th>
                             </tr>
                         </thead>
@@ -1280,9 +1304,9 @@ const ResultPage = () => {
                                 <th class="text-center">CO</th>
                                 <th class="text-center">Type</th>
                                 <th class="text-center">Module</th>
-                                <th class="text-center">Bloom's Verbs</th>
+                                <th class="text-center">Extracted Verbs</th>
                                 <th class="text-center">Level</th>
-                                <th class="text-center">Bloom's Highest Verb</th>
+                                <th class="text-center">Highest Verb</th>
                                 <th class="text-center">Status</th>
                             </tr>
                         </thead>
@@ -1295,10 +1319,10 @@ const ResultPage = () => {
                                 <td class="text-center">${question.CO || 'N/A'}</td>
                                 <td class="text-center">${question['QT'] || 'N/A'}</td>
                                 <td class="text-center">${question.Module || 'N/A'}</td>
-                                <td class="text-center">${question['Bloom\'s Verbs'] || 'N/A'}</td>
-                                <td class="text-center">${question['Bloom\'s Taxonomy Level'] || 'N/A'}</td>
-                                <td class="text-center">${question['Bloom\'s Highest Verb'] || 'N/A'}</td>
-                                <td class="text-center ${question.Remark === 'Matches Expected Blooms Level' ? 'status-match' : question.Remark === 'Higher than Expected Blooms Level' ? 'status-higher' : 'status-lower'}">${question.Remark || 'No remarks'}</td>
+                                <td class="text-center">${(question.DomainLevels && question.DomainLevels[selectedDomain]?.words) || question['Bloom\'s Verbs'] || 'N/A'}</td>
+                                <td class="text-center">${(question.DomainLevels && question.DomainLevels[selectedDomain]?.highestLevel) || question['Bloom\'s Taxonomy Level'] || 'N/A'}</td>
+                                <td class="text-center">${(question.DomainLevels && question.DomainLevels[selectedDomain]?.highestVerb) || question['Bloom\'s Highest Verb'] || 'N/A'}</td>
+                                <td class="text-center ${question.qScore === 1 || question.Remark === 'Matches Expected Blooms Level' ? 'status-match' : question.qScore === 2 || question.Remark === 'Higher than Expected Blooms Level' ? 'status-higher' : 'status-lower'}">${question.Remark || 'No remarks'}</td>
                               </tr>
                             `).join('')}
                         </tbody>
@@ -1325,9 +1349,9 @@ const ResultPage = () => {
                     </table>
                 </div>
 
-                <!-- Bloom's Analysis -->
+                <!-- Taxonomy Analysis -->
                 <div class="section">
-                    <div class="section-title">Bloom's Taxonomy Analysis</div>
+                    <div class="section-title">${currentDomainInfo.framework} Analysis</div>
                     <table>
                         <thead>
                             <tr>
@@ -1576,14 +1600,55 @@ const ResultPage = () => {
     );
   }
 
-  const collectedData = data['Collected Data']?.[0];
+  const domainMeta = {
+    cognitive: {
+      key: 'cognitive',
+      name: 'Cognitive',
+      framework: "Bloom's Taxonomy",
+      fullName: "Cognitive Domain (Bloom's Taxonomy)",
+      badgeClass: "bg-blue-50 border-blue-200 text-blue-700",
+      accent: "blue",
+      dotClass: "bg-blue-500",
+      borderActive: "border-blue-500 ring-2 ring-blue-500/20"
+    },
+    affective: {
+      key: 'affective',
+      name: 'Affective',
+      framework: "Krathwohl's Taxonomy",
+      fullName: "Affective Domain (Krathwohl's Taxonomy)",
+      badgeClass: "bg-purple-50 border-purple-200 text-purple-700",
+      accent: "purple",
+      dotClass: "bg-purple-500",
+      borderActive: "border-purple-500 ring-2 ring-purple-500/20"
+    },
+    psychomotor: {
+      key: 'psychomotor',
+      name: 'Psychomotor',
+      framework: "Simpson's Taxonomy",
+      fullName: "Psychomotor Domain (Simpson's Taxonomy)",
+      badgeClass: "bg-emerald-50 border-emerald-200 text-emerald-700",
+      accent: "emerald",
+      dotClass: "bg-emerald-500",
+      borderActive: "border-emerald-500 ring-2 ring-emerald-500/20"
+    }
+  };
+
+  const hasDomainResults = Boolean(data?.DomainResults);
+  const activeDomainResult = (hasDomainResults && data.DomainResults[selectedDomain]?.hasData)
+    ? data.DomainResults[selectedDomain]
+    : (data['Collected Data']?.[0] || {});
+
+  const collectedData = activeDomainResult;
+  const currentMeta = domainMeta[selectedDomain] || domainMeta.cognitive;
   const finalScore = collectedData?.FinalScore || 0;
   const questionData = collectedData?.QuestionData || [];
-  const bloomsData = collectedData?.BloomsData || {};
+  const bloomsData = collectedData?.BloomsData || collectedData?.LevelData || {};
   const moduleData = collectedData?.ModuleData || [];
   const coData = collectedData?.COData || {};
   const sequence = data?.Sequence || [];
-  const blommLevelMap = data?.blommLevelMap || {};
+  const blommLevelMap = (data?.LevelMaps && data?.LevelMaps[selectedDomain])
+    ? data.LevelMaps[selectedDomain]
+    : (data?.blommLevelMap || {});
   const questionRecommendations = collectedData?.QuestionRecommendations || [];
   const coRecommendationsRaw = collectedData?.CORecommendations || [];
   const moduleRecommendationsRaw = collectedData?.ModuleRecommendations || [];
@@ -1592,9 +1657,9 @@ const ResultPage = () => {
   const moduleRecommendations = normalizeModuleRecommendations(moduleRecommendationsRaw);
 
   const totalQuestions = questionRecommendations.length;
-  const matchingQuestions = questionRecommendations.filter(q => q.remark === 'Matches Expected Blooms Level').length;
-  const higherQuestions = questionRecommendations.filter(q => q.remark === 'Higher than Expected Blooms Level').length;
-  const lowerQuestions = questionRecommendations.filter(q => q.remark === 'Lower than Expected Blooms Level').length;
+  const matchingQuestions = questionRecommendations.filter(q => q.remark === 'Matches Expected Blooms Level' || q.qScore === 1).length;
+  const higherQuestions = questionRecommendations.filter(q => q.remark === 'Higher than Expected Blooms Level' || q.qScore === 2).length;
+  const lowerQuestions = questionRecommendations.filter(q => q.remark === 'Lower than Expected Blooms Level' || q.qScore === -1).length;
   const matchPercentage = totalQuestions > 0 ? (matchingQuestions / totalQuestions * 100).toFixed(1) : 0;
 
   // Add this RIGHT BEFORE: return (
@@ -1650,7 +1715,7 @@ const ResultPage = () => {
                 📊 QMetric Analysis
               </div>
               <h1 className="text-2xl font-bold text-gray-900 mb-1">Assessment Analysis Report</h1>
-              <p className="text-gray-500 text-sm">Course Outcome &amp; Cognitive Level Evaluation</p>
+              <p className="text-gray-500 text-sm">Course Outcome &amp; Multi-Domain Taxonomy Evaluation</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
               <button
@@ -1688,15 +1753,98 @@ const ResultPage = () => {
           </div>
         </div>
 
+        {/* ── Learning Domains Overview & Selector ── */}
+        {hasDomainResults && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-6 mb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+              <div>
+                <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                  <Target className="w-4 h-4 text-indigo-600" />
+                  Learning Domains Evaluation Pipeline
+                </h2>
+                <p className="text-xs text-gray-500">Click any evaluated domain to switch the comprehensive analysis report below</p>
+              </div>
+              <span className="text-xs px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg font-medium">
+                Active Domain: <strong className="text-slate-900">{currentMeta.fullName}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {['cognitive', 'affective', 'psychomotor'].map((domainKey) => {
+                const meta = domainMeta[domainKey];
+                const domainResult = data.DomainResults?.[domainKey];
+                const overview = data.DomainOverview?.[domainKey];
+                const isEvaluated = Boolean(domainResult?.hasData);
+                const isSelected = selectedDomain === domainKey;
+                const score = isEvaluated ? domainResult.FinalScore : null;
+
+                return (
+                  <button
+                    key={domainKey}
+                    type="button"
+                    onClick={() => {
+                      if (isEvaluated) setSelectedDomain(domainKey);
+                    }}
+                    disabled={!isEvaluated}
+                    className={`text-left p-4 rounded-xl border transition-all relative ${
+                      isSelected
+                        ? `bg-white shadow-md ${meta.borderActive}`
+                        : isEvaluated
+                          ? 'bg-slate-50/70 border-gray-200 hover:border-gray-300 hover:bg-white cursor-pointer'
+                          : 'bg-gray-50/50 border-gray-200/60 opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${meta.dotClass}`} />
+                        <span className="text-sm font-bold text-gray-900">{meta.name}</span>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                        isEvaluated
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {isEvaluated ? 'Evaluated' : 'Not Included'}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-gray-500 mb-3">{meta.framework}</div>
+
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <div className="text-xs text-gray-400 font-medium">Domain Score</div>
+                        <div className={`text-xl font-black ${
+                          isEvaluated ? 'text-gray-900' : 'text-gray-400'
+                        }`}>
+                          {isEvaluated ? `${score}%` : '—'}
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-gray-500">
+                        <div>{overview?.questionCount || domainResult?.QuestionData?.length || 0} Questions</div>
+                        <div>{overview?.coCount || 0} COs</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ── Score Card ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-8 mb-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500" />
           <div className="text-center">
-            <h2 className="text-base font-semibold text-gray-500 uppercase tracking-widest mb-6">Overall Assessment Score</h2>
+            <h2 className="text-base font-semibold text-gray-500 uppercase tracking-widest mb-2">Overall Assessment Score</h2>
+            <div className="mb-4">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${currentMeta.badgeClass}`}>
+                Viewing: {currentMeta.fullName}
+              </span>
+            </div>
             <div className="flex justify-center mb-6">
               <Gauge value={finalScore} size={240} />
             </div>
-            <p className="text-gray-400 text-sm mb-5">Based on alignment, distribution, and taxonomy analysis</p>
+            <p className="text-gray-400 text-sm mb-5">Based on alignment, distribution, and {currentMeta.framework} analysis</p>
             <div className={`inline-block rounded-xl px-8 py-4 border-2 ${scoreRemark.bgColor} ${scoreRemark.borderColor}`}>
               <div className={`text-2xl font-bold mb-1 ${scoreRemark.color}`}>{scoreRemark.label}</div>
               <div className="text-sm text-gray-600 max-w-xl">{scoreRemark.description}</div>
@@ -1745,16 +1893,19 @@ const ResultPage = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="border-b-2 border-gray-100">
-                      <Th center>Outcome</Th><Th center>Weight</Th><Th center>Target Level</Th>
+                      <Th center>Outcome</Th><Th center>Weight</Th><Th center>Target Level ({currentMeta.name})</Th>
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {Object.keys(sequence[0]?.COs || {}).map(co => {
                         const d = sequence[0].COs[co];
+                        const targetLevel = (d.levelsByDomain && d.levelsByDomain[selectedDomain])
+                          || (selectedDomain === 'cognitive' ? d.blooms?.[0] : null)
+                          || 'N/A';
                         return (
                           <tr key={co} className="hover:bg-slate-50 transition-colors">
                             <Td center><span className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-md font-semibold text-xs">{co}</span></Td>
                             <Td center>{d.weight || 0}%</Td>
-                            <Td center>{d.blooms?.[0] || 'N/A'}</Td>
+                            <Td center>{targetLevel}</Td>
                           </tr>
                         );
                       })}
@@ -1765,29 +1916,35 @@ const ResultPage = () => {
 
               {/* ── Module Distribution ── */}
               <Card title="Module Distribution" accent="purple">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b-2 border-gray-100">
-                      <Th center>Module</Th><Th center>Hours</Th>
-                    </tr></thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {Object.keys(sequence[0]?.ModuleHours || {}).map(mod => (
-                        <tr key={mod} className="hover:bg-slate-50 transition-colors">
-                          <Td center><span className="px-2 py-0.5 bg-purple-50 border border-purple-100 text-purple-700 rounded-md font-semibold text-xs">{mod}</span></Td>
-                          <Td center>{sequence[0].ModuleHours[mod] || 0}</Td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {selectedDomain === 'cognitive' ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b-2 border-gray-100">
+                        <Th center>Module</Th><Th center>Hours</Th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {Object.keys(sequence[0]?.ModuleHours || {}).map(mod => (
+                          <tr key={mod} className="hover:bg-slate-50 transition-colors">
+                            <Td center><span className="px-2 py-0.5 bg-purple-50 border border-purple-100 text-purple-700 rounded-md font-semibold text-xs">{mod}</span></Td>
+                            <Td center>{sequence[0].ModuleHours[mod] || 0}</Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+                    ℹ️ Module hours and syllabus distribution penalty apply specifically to the Cognitive domain pipeline.
+                  </div>
+                )}
               </Card>
 
-              {/* ── Bloom's Mapping ── */}
-              <Card title="Bloom's Taxonomy Mapping" accent="teal">
+              {/* ── Taxonomy Mapping ── */}
+              <Card title={`${currentMeta.framework} Mapping`} accent={currentMeta.accent}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="border-b-2 border-gray-100">
-                      <Th>Cognitive Level</Th><Th center>Value</Th>
+                      <Th>{currentMeta.name} Level</Th><Th center>Value</Th>
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {Object.keys(blommLevelMap).map(level => (
@@ -1818,9 +1975,9 @@ const ResultPage = () => {
                           <Td center>{q.Marks || 0}</Td>
                           <Td center>{q.CO || 'N/A'}</Td>
                           <Td center>{q.Module || 'N/A'}</Td>
-                          <Td center>{q["Bloom's Taxonomy Level"] || 'N/A'}</Td>
-                          <td className={`px-4 py-3 text-center text-xs font-semibold ${q.Remark === 'Matches Expected Blooms Level' ? 'text-green-600' :
-                            q.Remark === 'Higher than Expected Blooms Level' ? 'text-blue-600' : 'text-red-500'
+                          <Td center>{(q.DomainLevels && q.DomainLevels[selectedDomain]?.highestLevel) || q["Bloom's Taxonomy Level"] || 'N/A'}</Td>
+                          <td className={`px-4 py-3 text-center text-xs font-semibold ${q.qScore === 1 || q.Remark === 'Matches Expected Blooms Level' ? 'text-green-600' :
+                            q.qScore === 2 || q.Remark === 'Higher than Expected Blooms Level' ? 'text-blue-600' : 'text-red-500'
                             }`}>{q.Remark || 'N/A'}</td>
                         </tr>
                       ))}
@@ -1829,8 +1986,8 @@ const ResultPage = () => {
                 </div>
               </Card>
 
-              {/* ── Bloom's Analysis ── */}
-              <Card title="Bloom's Taxonomy Analysis" accent="purple">
+              {/* ── Taxonomy Analysis ── */}
+              <Card title={`${currentMeta.framework} Analysis`} accent={currentMeta.accent}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="border-b-2 border-gray-100">
@@ -1859,30 +2016,32 @@ const ResultPage = () => {
               </Card>
 
               {/* ── Module Coverage ── */}
-              <Card title="Module Coverage Analysis" accent="teal">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b-2 border-gray-100">
-                      <Th center>Module</Th><Th center>Expected</Th>
-                      <Th center>Actual</Th><Th center>Variance</Th>
-                    </tr></thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {moduleData.map((mod, index) => {
-                        const variance = (mod.actual || 0) - (mod.expected || 0);
-                        return (
-                          <tr key={index} className="hover:bg-slate-50 transition-colors">
-                            <Td center><span className="px-2 py-0.5 bg-teal-50 border border-teal-100 text-teal-700 rounded-md font-semibold text-xs">Module {index + 1}</span></Td>
-                            <Td center>{(mod.expected || 0).toFixed(1)}%</Td>
-                            <Td center>{(mod.actual || 0).toFixed(1)}%</Td>
-                            <td className={`px-4 py-3 text-center text-sm font-semibold ${variance < 0 ? 'text-red-500' : 'text-green-600'
-                              }`}>{variance > 0 ? '+' : ''}{variance.toFixed(1)}%</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+              {selectedDomain === 'cognitive' && (
+                <Card title="Module Coverage Analysis" accent="teal">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b-2 border-gray-100">
+                        <Th center>Module</Th><Th center>Expected</Th>
+                        <Th center>Actual</Th><Th center>Variance</Th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {moduleData.map((mod, index) => {
+                          const variance = (mod.actual || 0) - (mod.expected || 0);
+                          return (
+                            <tr key={index} className="hover:bg-slate-50 transition-colors">
+                              <Td center><span className="px-2 py-0.5 bg-teal-50 border border-teal-100 text-teal-700 rounded-md font-semibold text-xs">Module {index + 1}</span></Td>
+                              <Td center>{(mod.expected || 0).toFixed(1)}%</Td>
+                              <Td center>{(mod.actual || 0).toFixed(1)}%</Td>
+                              <td className={`px-4 py-3 text-center text-sm font-semibold ${variance < 0 ? 'text-red-500' : 'text-green-600'
+                                }`}>{variance > 0 ? '+' : ''}{variance.toFixed(1)}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
 
               {/* ── CO Coverage ── */}
               <Card title="Course Outcome Coverage" accent="blue">
@@ -1950,8 +2109,8 @@ const ResultPage = () => {
                           <Td center>{rec.highestVerb || 'N/A'}</Td>
                           <td className={`px-4 py-3 text-center text-sm font-bold ${rec.qScore === 1 ? 'text-green-600' : rec.qScore === 2 ? 'text-blue-600' : 'text-red-500'
                             }`}>{rec.qScore}</td>
-                          <td className={`px-4 py-3 text-center text-xs font-semibold ${rec.remark === 'Matches Expected Blooms Level' ? 'text-green-600' :
-                            rec.remark === 'Higher than Expected Blooms Level' ? 'text-blue-600' : 'text-red-500'
+                          <td className={`px-4 py-3 text-center text-xs font-semibold ${rec.qScore === 1 ? 'text-green-600' :
+                            rec.qScore === 2 ? 'text-blue-600' : 'text-red-500'
                             }`}>{rec.remark || 'No remarks'}</td>
                         </tr>
                       ))}

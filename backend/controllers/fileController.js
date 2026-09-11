@@ -3,8 +3,10 @@ const path = require("path");
 const fs = require("fs");
 const { Structurize } = require("../core/Regex/Regex");
 const PaperInfo = require("../Model/PaperInfo");
-const { Evaluate } = require("../core/evaluate/evaluate");
+const { Evaluate, EvaluateAllDomains } = require("../core/evaluate/evaluate");
 const { backupPaperToDrive } = require('../core/drive/backup');
+const { DOMAINS, LEVEL_TO_DOMAIN } = require("../core/config/domainRegistry");
+const { buildLevelMap } = require("../core/utils/levelMapBuilder");
 
 exports.convertToText = async (req, res) => {
   if (!req.file) {
@@ -72,94 +74,85 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
     const coWeights = {};
     const moduleHours = {};
     const coDetails = {};
+    const usedLevelsByDomain = {
+      cognitive: new Set(),
+      affective: new Set(),
+      psychomotor: new Set()
+    };
 
-    // Step 2: Process Sequence and FormData to Extract COs and Modules
+    // Step 2: Parse raw Sequence into coDetails bucketed by domain
     sequenceArray.forEach((item) => {
-      const match = item.name.match(/\d+/); // Match the CO or Module number
+      const match = String(item.name).match(/\d+/);
       if (!match) return;
-
       const number = match[0];
 
       if (item.type === "CO") {
         const coKey = `CO${number}`;
         const weight = parseFloat(item.weight || 0);
 
-        // Normalize Bloom levels to lowercase
-        const blooms = Array.isArray(item.blooms)
-          ? item.blooms
-              .filter((b) => typeof b === "string")
-              .map((b) => b.toLowerCase())
+        const rawBlooms = Array.isArray(item.blooms)
+          ? item.blooms.filter((b) => typeof b === "string")
           : typeof item.blooms === "string"
-            ? [item.blooms.toLowerCase()]
+            ? [item.blooms]
             : [];
 
+        const levelsByDomain = { cognitive: null, affective: null, psychomotor: null };
+
+        rawBlooms.forEach((raw) => {
+          // Normalization: lowercase, trim, whitespace -> underscore
+          const level = raw.toLowerCase().trim().replace(/\s+/g, "_");
+          const domain = LEVEL_TO_DOMAIN[level];
+          if (!domain) {
+            console.warn(`Unknown level "${raw}" on ${coKey} — ignored. Must match a known level name across the 3 domains.`);
+            return;
+          }
+          if (levelsByDomain[domain] !== null) {
+            console.warn(`${coKey} declares multiple levels for domain "${domain}" (already has "${levelsByDomain[domain]}", ignoring "${level}"). Only the first is used.`);
+            return;
+          }
+          levelsByDomain[domain] = level;
+          usedLevelsByDomain[domain].add(level);
+        });
+
+        const legacyBlooms = levelsByDomain.cognitive ? [levelsByDomain.cognitive] : [];
+
         coWeights[coKey] = weight;
-        coDetails[coKey] = { weight, blooms };
+        coDetails[coKey] = {
+          weight,
+          blooms: legacyBlooms,
+          levelsByDomain
+        };
       } else if (item.type === "Module") {
         moduleHours[`M${number}`] = parseFloat(item.hours || 0);
       }
     });
 
-    // Step 3: Define all 6 Bloom levels in standard order
-    const allBloomLevels = [
-      "create",
-      "evaluate",
-      "analyze",
-      "apply",
-      "understand",
-      "remember",
-    ];
-    const bloomLevelMap = {};
-
-    // Step 4: Collect unique Bloom levels used in COs
-    const usedBloomLevels = new Set();
-    Object.values(coDetails).forEach((data) => {
-      const bloom = (data.blooms[0] || "").toLowerCase();
-      if (bloom && allBloomLevels.includes(bloom)) {
-        usedBloomLevels.add(bloom);
-      }
+    // Step 3: Build a dynamic level map PER DOMAIN (Decision #8)
+    const levelMaps = {};
+    Object.values(DOMAINS).forEach((domainCfg) => {
+      levelMaps[domainCfg.key] = buildLevelMap(domainCfg.naturalOrder, usedLevelsByDomain[domainCfg.key]);
     });
 
-    // Step 5: Sort used Bloom levels by their standard order
-    const sortedUsedBlooms = allBloomLevels.filter((level) =>
-      usedBloomLevels.has(level),
-    );
-
-    // Step 6: Assign levels dynamically (1, 2, 3, ... based on what's used)
-    sortedUsedBlooms.forEach((bloom, index) => {
-      bloomLevelMap[bloom] = index + 1;
+    console.log("Used Levels By Domain:", {
+      cognitive: Array.from(usedLevelsByDomain.cognitive),
+      affective: Array.from(usedLevelsByDomain.affective),
+      psychomotor: Array.from(usedLevelsByDomain.psychomotor)
     });
+    console.log("Dynamic Level Maps:", levelMaps);
 
-    // Step 7: Assign remaining unused Bloom levels to next available level
-    let nextLevel = sortedUsedBlooms.length + 1;
-    allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level] && nextLevel <= 6) {
-        bloomLevelMap[level] = nextLevel;
-        nextLevel++;
-      }
-    });
+    // Step 4: Process Question Data across all domains
+    const questionData = await Structurize([], filePath, levelMaps, formData.Field);
 
-    // Step 8: Any remaining levels get assigned to level 6
-    allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level]) {
-        bloomLevelMap[level] = 6;
-      }
-    });
-
-    console.log("Used Bloom Levels:", Array.from(usedBloomLevels));
-    console.log("Dynamic Bloom Level Map:", bloomLevelMap);
-
-    // Step 6: Process Question Data
-    const questionData = await Structurize([], filePath, bloomLevelMap, formData.Field);
-    const evaluationResult = Evaluate(
+    // Step 5: Evaluate all domains
+    const { results, overview } = EvaluateAllDomains(
       questionData,
       coDetails,
       moduleHours,
-      bloomLevelMap,
+      levelMaps
     );
 
-    // Step 7: Save Data to MongoDB
-      const paper = new PaperInfo({
+    // Step 6: Save Data to MongoDB
+    const paper = new PaperInfo({
       "College Name": formData["College Name"],
       Field: formData.Field,
       Branch: formData.Branch,
@@ -172,19 +165,25 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
         COs: coDetails,
         ModuleHours: moduleHours,
       },
-      blommLevelMap: bloomLevelMap,
-      "Collected Data": evaluationResult,
+      // Backward compatibility mirrors:
+      "Collected Data": results.cognitive && results.cognitive.hasData ? results.cognitive : {},
+      blommLevelMap: levelMaps.cognitive || {},
+
+      // New multi-domain fields:
+      DomainResults: results,
+      LevelMaps: levelMaps,
+      DomainOverview: overview,
+
       userId: userId,
     });
 
-    // Step 8: Save the paper document to MongoDB
     await paper.save();
     try {
       await backupPaperToDrive(formData, filePath, path.extname(filePath));
     } catch (driveErr) {
       console.error('Drive backup failed (paper still saved to DB):', driveErr.message);
     }
-    return evaluationResult;
+    return { results, overview, id: paper._id, _id: paper._id };
   } catch (error) {
     console.error("❌ ERROR INSIDE saveToDB");
     console.error("Message:", error.message);

@@ -69,7 +69,8 @@ const UploadPage = () => {
     for (let i = 0; i < courseOutcomes.length; i++) {
       const co = courseOutcomes[i];
       if (!co.weight || parseFloat(co.weight) <= 0) { setError(`Course Outcome ${i + 1} must have a valid weight`); return false; }
-      if (!co.blooms) { setError(`Course Outcome ${i + 1} must have a Bloom's level selected`); return false; }
+      const hasLevel = Boolean(co.cognitive || co.affective || co.psychomotor || co.blooms);
+      if (!hasLevel) { setError(`Course Outcome ${i + 1} must have at least one domain level selected (Cognitive, Affective, or Psychomotor)`); return false; }
     }
 
     // Validate weight sum
@@ -92,7 +93,14 @@ const UploadPage = () => {
     setError('');
   };
 
-  const createCO = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, weight: "", blooms: "" });
+  const createCO = () => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    weight: "",
+    cognitive: "",
+    affective: "",
+    psychomotor: "",
+    blooms: ""
+  });
   const createModule = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, name: "", hours: "" });
   const createQuestion = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, question: "", co: "", marks: "", difficulty: "", module: "" });
 
@@ -228,7 +236,19 @@ const UploadPage = () => {
     // Transform course outcomes and modules into backend's expected format
     const transformedSequence = [
       // Add course outcomes with backend structure
-      ...courseOutcomes.map((co, index) => ({ name: `CO${index + 1}`, type: "CO", weight: parseFloat(co.weight), blooms: [co.blooms] })),
+      ...courseOutcomes.map((co, index) => {
+        const levels = [];
+        if (co.cognitive) levels.push(co.cognitive);
+        if (co.affective) levels.push(co.affective);
+        if (co.psychomotor) levels.push(co.psychomotor);
+        if (levels.length === 0 && co.blooms) levels.push(co.blooms);
+        return {
+          name: `CO${index + 1}`,
+          type: "CO",
+          weight: parseFloat(co.weight),
+          blooms: levels
+        };
+      }),
       // Add modules with backend structure
       ...modules.map(module => ({ name: module.name, type: "Module", hours: parseFloat(module.hours) }))
     ];
@@ -256,19 +276,16 @@ const UploadPage = () => {
           // Extract the ID from response - adjust based on your backend's response structure
           let resultId;
           if (typeof responseData === 'string') {
-            // If response is directly the ID as string
-            resultId = responseData._id;
-          } else if (responseData.id) {
-            // If response has an id field
-            resultId = responseData._id;
+            resultId = responseData;
+          } else if (responseData.id || responseData._id) {
+            resultId = responseData.id || responseData._id;
           } else if (responseData.result_id) {
-            // If response has a result_id field
             resultId = responseData.result_id;
-          } else if (responseData.data && responseData.data.id) {
-            // If response has nested id
-            resultId = responseData.data.id;
+          } else if (responseData.data && (responseData.data.id || responseData.data._id)) {
+            resultId = responseData.data.id || responseData.data._id;
+          } else if (responseData.results || responseData.overview) {
+            resultId = responseData.id || responseData._id || 'success';
           } else {
-            // If response is an object, you might need to extract differently
             resultId = responseData;
           }
 
@@ -322,7 +339,9 @@ const UploadPage = () => {
     a.click(); URL.revokeObjectURL(a.href);
   };
 
-  const bloomsLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+  const cognitiveLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+  const affectiveLevels = ['Receiving', 'Responding', 'Valuing', 'Organizing', 'Characterizing'];
+  const psychomotorLevels = ['Perception', 'Set', 'Guided Response', 'Mechanism', 'Complex Overt Response', 'Adaptation', 'Origination'];
   const requiredFields = ["College Name", "Branch", "Course Name", "Course Code"];
   const weightSum = getCurrentWeightSum();
   const weightOk = Math.abs(weightSum - 100) <= 0.01;
@@ -413,7 +432,7 @@ const UploadPage = () => {
         <SectionCard
           icon={<Target size={16} />}
           title="Course Outcomes"
-          subtitle="Define learning objectives with weights and cognitive levels. Weights must sum to 100%."
+          subtitle="Define learning objectives with weights and learning domain levels (Cognitive, Affective, Psychomotor). Weights must sum to 100%."
         >
           <div className="mb-5">
             <label className={labelClass}>
@@ -445,7 +464,7 @@ const UploadPage = () => {
               <p className="text-gray-500 text-xs mt-1">Enter the number above to get started</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {courseOutcomes.map((co, index) => (
                 <div key={co.id}
                   className="bg-gray-700/30 border border-gray-600/40 rounded-xl p-4 group hover:border-gray-500/60 hover:bg-gray-700/40 transition-all">
@@ -461,21 +480,98 @@ const UploadPage = () => {
                       <Trash2 size={14} />
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelClass}>Weight (%) <span className="text-red-400">*</span></label>
-                      <input type="number" placeholder="0–100" value={co.weight}
-                        onChange={(e) => handleCOChange(index, 'weight', e.target.value)}
-                        className={inputClass} min="0" max="100" step="0.1" />
+
+                  <div className="mb-4">
+                    <label className={labelClass}>Weight (%) <span className="text-red-400">*</span></label>
+                    <input type="number" placeholder="0–100" value={co.weight}
+                      onChange={(e) => handleCOChange(index, 'weight', e.target.value)}
+                      className={`${inputClass} md:w-48`} min="0" max="100" step="0.1" />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-gray-300 text-xs font-semibold uppercase tracking-wider">
+                        Domain Taxonomy Levels <span className="text-red-400">*</span>
+                      </label>
+                      <span className="text-gray-400 text-xs">Select at least one domain</span>
                     </div>
-                    <div>
-                      <label className={labelClass}>Bloom's Level <span className="text-red-400">*</span></label>
-                      <select value={co.blooms}
-                        onChange={(e) => handleCOChange(index, 'blooms', e.target.value)}
-                        className={`${inputClass} cursor-pointer`}>
-                        <option value="">Select Level</option>
-                        {bloomsLevels.map(l => <option key={l} value={l}>{l}</option>)}
-                      </select>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Cognitive (Bloom's) */}
+                      <div className="bg-gray-850/70 border border-blue-500/25 rounded-xl p-3 bg-gray-900/40">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                          <span className="text-xs font-bold text-blue-300">Cognitive (Bloom's)</span>
+                        </div>
+                        <select
+                          value={co.cognitive || ''}
+                          onChange={(e) => {
+                            handleCOChange(index, 'cognitive', e.target.value);
+                            handleCOChange(index, 'blooms', e.target.value);
+                          }}
+                          className={`${inputClass} text-xs py-2 cursor-pointer border-blue-500/20 focus:border-blue-500`}
+                        >
+                          <option value="">None / Optional</option>
+                          {cognitiveLevels.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Affective (Krathwohl's) */}
+                      <div className="bg-gray-850/70 border border-purple-500/25 rounded-xl p-3 bg-gray-900/40">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                          <span className="text-xs font-bold text-purple-300">Affective (Krathwohl)</span>
+                        </div>
+                        <select
+                          value={co.affective || ''}
+                          onChange={(e) => handleCOChange(index, 'affective', e.target.value)}
+                          className={`${inputClass} text-xs py-2 cursor-pointer border-purple-500/20 focus:border-purple-500`}
+                        >
+                          <option value="">None / Optional</option>
+                          {affectiveLevels.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Psychomotor (Simpson's) */}
+                      <div className="bg-gray-850/70 border border-emerald-500/25 rounded-xl p-3 bg-gray-900/40">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                          <span className="text-xs font-bold text-emerald-300">Psychomotor (Simpson)</span>
+                        </div>
+                        <select
+                          value={co.psychomotor || ''}
+                          onChange={(e) => handleCOChange(index, 'psychomotor', e.target.value)}
+                          className={`${inputClass} text-xs py-2 cursor-pointer border-emerald-500/20 focus:border-emerald-500`}
+                        >
+                          <option value="">None / Optional</option>
+                          {psychomotorLevels.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Active tags */}
+                    <div className="flex flex-wrap items-center gap-2 mt-3 pt-2.5 border-t border-gray-700/50">
+                      <span className="text-xs text-gray-400 font-medium">Configured:</span>
+                      {co.cognitive && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
+                          Cognitive: {co.cognitive}
+                        </span>
+                      )}
+                      {co.affective && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-purple-500/20 border border-purple-500/30 text-purple-300">
+                          Affective: {co.affective}
+                        </span>
+                      )}
+                      {co.psychomotor && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+                          Psychomotor: {co.psychomotor}
+                        </span>
+                      )}
+                      {!co.cognitive && !co.affective && !co.psychomotor && (
+                        <span className="text-xs text-amber-400/90 font-medium">
+                          ⚠️ No domain selected yet — please select at least one domain level above
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
