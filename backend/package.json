@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node core/evaluate/test_multi_domain.js && node core/evaluate/test_e2e_integration.js",
-    "test:unit": "node core/evaluate/test_multi_domain.js",
+    "test": "node core/evaluate/test_multi_domain.js && node core/evaluate/test_cosine_similarity.js && node core/evaluate/test_e2e_integration.js",
+    "test:unit": "node core/evaluate/test_multi_domain.js && node core/evaluate/test_cosine_similarity.js",
+    "test:cosine": "node core/evaluate/test_cosine_similarity.js",
     "test:e2e": "node core/evaluate/test_e2e_integration.js",
     "start": "node index.js",
     "dev": "nodemon index.js",

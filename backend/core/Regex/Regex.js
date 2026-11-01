@@ -240,6 +240,7 @@
 
 //Version-5
 const fs = require('fs');
+const path = require('path');
 const xlsx = require('xlsx');
 const { spawnSync } = require('child_process');
 const { krathwohlTaxonomyVerbs } = require('./affectiveVerbs');
@@ -296,6 +297,44 @@ function extractVerbsPython(text) {
         return (result.stdout || '').trim().split(',').filter(Boolean);
     } catch {
         return [];
+    }
+}
+
+// In-memory cache for cosine similarity lookup to avoid redundant process spawns
+const similarityCache = new Map();
+
+// Helper: Find similar Bloom verb using Python cosine similarity fallback
+function findSimilarVerbPython(text, verbDictionary, threshold = 0.65) {
+    if (!text || typeof text !== 'string') return null;
+    const cacheKey = text.trim().toLowerCase();
+    if (similarityCache.has(cacheKey)) {
+        return similarityCache.get(cacheKey);
+    }
+
+    try {
+        const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+        const scriptPath = path.join(__dirname, 'extraction_logic.py');
+        const payload = JSON.stringify({
+            text: text,
+            verb_dictionary: verbDictionary,
+            threshold: threshold
+        });
+
+        const result = spawnSync(pythonCmd, [scriptPath, '--similarity'], {
+            input: payload,
+            encoding: 'utf-8',
+            timeout: 3000
+        });
+
+        if (result.error || result.status !== 0) {
+            return null;
+        }
+
+        const parsed = JSON.parse(result.stdout || '{}');
+        similarityCache.set(cacheKey, parsed);
+        return parsed;
+    } catch {
+        return null;
     }
 }
 
@@ -363,7 +402,7 @@ exports.FindLevelInText = (text, domainKey, verbDictionary, levelMap = {}) => {
             const levelIndex = getLevelIndex(level, levelMap, maxLevelValue);
             wordResult.push(word);
             levelResult.push(levelIndex);
-            if (levelIndex < highestLevel) {
+            if (levelIndex < highestLevel || highestVerb === null) {
                 highestLevel = levelIndex;
                 highestVerb = word;
                 matchedLevelName = level;
@@ -371,7 +410,23 @@ exports.FindLevelInText = (text, domainKey, verbDictionary, levelMap = {}) => {
         }
     }
 
-    const matched = wordResult.length > 0;
+    let matched = wordResult.length > 0;
+    let similarityMatch = null;
+
+    // Cosine similarity fallback: ONLY triggered if no dictionary verb matched
+    if (!matched && domainKey === "cognitive") {
+        const simResult = findSimilarVerbPython(text, verbDictionary);
+        if (simResult && simResult.matched && simResult.level) {
+            const levelIndex = getLevelIndex(simResult.level, levelMap, maxLevelValue);
+            wordResult.push(simResult.original_verb);
+            levelResult.push(levelIndex);
+            highestLevel = levelIndex;
+            highestVerb = `${simResult.original_verb} (≈ ${simResult.similar_verb})`;
+            matchedLevelName = simResult.level;
+            matched = true;
+            similarityMatch = simResult;
+        }
+    }
 
     // Psychomotor ambiguity resolution
     if (domainKey === "psychomotor" && matched &&
@@ -384,7 +439,8 @@ exports.FindLevelInText = (text, domainKey, verbDictionary, levelMap = {}) => {
             highestVerb: highestVerb || "N/A",
             matchedLevelName: resolved.level,
             matched,
-            ambiguityResolution: resolved.ruleFired
+            ambiguityResolution: resolved.ruleFired,
+            similarityMatch
         };
     }
 
@@ -395,7 +451,8 @@ exports.FindLevelInText = (text, domainKey, verbDictionary, levelMap = {}) => {
         highestVerb: matched ? highestVerb : null,
         matchedLevelName: matched ? matchedLevelName : null,
         matched,
-        ambiguityResolution: null
+        ambiguityResolution: null,
+        similarityMatch
     };
 };
 
