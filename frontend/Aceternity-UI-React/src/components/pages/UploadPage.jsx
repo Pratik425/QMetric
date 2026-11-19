@@ -18,6 +18,49 @@ const SectionCard = ({ badge, title, subtitle, icon, children }) => (
   </div>
 );
 
+// Fields of study for higher education in India, grouped for the dropdown.
+// Stored as plain text only; nothing in the backend depends on these values.
+const FIELD_GROUPS = {
+  "Engineering & Technology": [
+    "Computer Science & Engineering", "Information Technology", "Artificial Intelligence & Data Science",
+    "Electronics & Communication Engineering", "Electrical Engineering", "Mechanical Engineering",
+    "Civil Engineering", "Chemical Engineering", "Biotechnology Engineering", "Aerospace Engineering",
+    "Automobile Engineering", "Production & Industrial Engineering", "Instrumentation Engineering",
+    "Mining Engineering", "Metallurgy & Materials Engineering", "Petroleum Engineering",
+    "Marine Engineering", "Textile Engineering", "Environmental Engineering",
+    "Agricultural Engineering", "Food Technology"
+  ],
+  "Medical & Health Sciences": [
+    "Medicine (MBBS / MD / MS)", "Dental (BDS / MDS)", "Ayurveda (BAMS)", "Homeopathy (BHMS)",
+    "Unani (BUMS)", "Siddha", "Naturopathy & Yogic Sciences", "Nursing", "Pharmacy",
+    "Physiotherapy", "Occupational Therapy", "Veterinary Science", "Public Health",
+    "Medical Laboratory Technology", "Optometry", "Allied Health Sciences"
+  ],
+  "Science": [
+    "Physics", "Chemistry", "Mathematics", "Statistics", "Life Sciences", "Microbiology",
+    "Biochemistry", "Botany", "Zoology", "Geology", "Environmental Science", "Electronics",
+    "Computer Applications (BCA / MCA)", "Data Science", "Forensic Science", "Agriculture",
+    "Horticulture", "Forestry", "Fisheries Science", "Dairy Science", "Home Science"
+  ],
+  "Commerce & Management": [
+    "Commerce", "Management (BBA / MBA)", "Accounting & Finance", "Chartered Accountancy",
+    "Company Secretary", "Cost & Management Accountancy", "Banking & Insurance", "Economics",
+    "Hotel Management & Hospitality", "Business Analytics"
+  ],
+  "Humanities & Social Sciences": [
+    "English", "Hindi & Regional Languages", "History", "Political Science", "Sociology",
+    "Psychology", "Philosophy", "Geography", "Public Administration", "Social Work",
+    "Journalism & Mass Communication", "Education (B.Ed / M.Ed)", "Library Science",
+    "Anthropology", "Linguistics"
+  ],
+  "Law": ["Law (LLB / LLM)"],
+  "Architecture, Design & Arts": [
+    "Architecture", "Urban & Regional Planning", "Fine Arts", "Design", "Performing Arts",
+    "Fashion Technology", "Animation & Film Studies"
+  ],
+  "Other": ["Physical Education & Sports Science", "Aviation", "Defence Studies", "Other"]
+};
+
 const UploadPage = () => {
   const [formData, setFormData] = useState({
     "College Name": "",
@@ -45,7 +88,6 @@ const UploadPage = () => {
   // CSS classes
   const labelClass = "block text-gray-300 text-sm font-medium mb-2";
   const inputClass = "w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all";
-  const fieldOptions = ['Engineering', 'Medical', 'Pharmacy', 'Management', 'Science', 'Other'];
   // Helper function
   const getCurrentWeightSum = () => courseOutcomes.reduce((sum, co) => sum + (parseFloat(co.weight) || 0), 0);
   const getQuestionsTotalMarks = () => questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 0), 0);
@@ -263,7 +305,7 @@ const UploadPage = () => {
       const token = sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
       if (!token) throw new Error('No authentication token found. Please login first.');
 
-        const response = await fetch(`${API_BASE_URL}/upload/totext`, {
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formDataToSend
@@ -386,19 +428,19 @@ const UploadPage = () => {
               Field of Study <span className="text-red-400">*</span>
             </label>
             <div className="flex flex-wrap gap-2">
-              {fieldOptions.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => { setFormData({ ...formData, Field: f }); setError(''); }}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${formData.Field === f
-                    ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
-                    : 'bg-gray-900/60 border-gray-700/60 text-gray-400 hover:text-gray-200 hover:border-gray-600'
-                    }`}
-                >
-                  {f}
-                </button>
-              ))}
+              <select
+                name="Field"
+                value={formData.Field}
+                onChange={handleInputChange}
+                className={`${inputClass} cursor-pointer md:w-96`}
+              >
+                <option value="">Select field of study</option>
+                {Object.entries(FIELD_GROUPS).map(([group, fields]) => (
+                  <optgroup key={group} label={group}>
+                    {fields.map((f) => <option key={f} value={f}>{f}</option>)}
+                  </optgroup>
+                ))}
+              </select>
             </div>
           </div>
 
