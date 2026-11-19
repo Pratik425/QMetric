@@ -290,7 +290,7 @@ function extractVerbsPython(text) {
     try {
         const pythonCmd = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
         const scriptPath = path.join(__dirname, 'extraction_logic.py');
-        const result = spawnSync(pythonCmd, [scriptPath], { input: text, encoding: 'utf-8', timeout: 1000 });
+        const result = spawnSync(pythonCmd, [scriptPath], { input: text, encoding: 'utf-8', timeout: 5000 });
         if (result.error || result.status !== 0) {
             return [];
         }
@@ -303,7 +303,7 @@ function extractVerbsPython(text) {
 // In-memory cache for cosine similarity lookup to avoid redundant process spawns
 const similarityCache = new Map();
 
-// Helper: Find similar Bloom verb using Python cosine similarity fallback
+// Helper: Find similar Bloom verb using Python cosine similarity engine
 function findSimilarVerbPython(text, verbDictionary, threshold = 0.65) {
     if (!text || typeof text !== 'string') return null;
     const cacheKey = text.trim().toLowerCase();
@@ -323,17 +323,19 @@ function findSimilarVerbPython(text, verbDictionary, threshold = 0.65) {
         const result = spawnSync(pythonCmd, [scriptPath, '--similarity'], {
             input: payload,
             encoding: 'utf-8',
-            timeout: 3000
+            timeout: 10000
         });
 
         if (result.error || result.status !== 0) {
+            console.warn(`[Cosine Similarity] Python fallback warning: ${result.error?.message || result.stderr || ('status ' + result.status)}`);
             return null;
         }
 
         const parsed = JSON.parse(result.stdout || '{}');
         similarityCache.set(cacheKey, parsed);
         return parsed;
-    } catch {
+    } catch (err) {
+        console.warn(`[Cosine Similarity] Subprocess invocation failed: ${err.message}`);
         return null;
     }
 }
